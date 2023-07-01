@@ -95,18 +95,17 @@ parseString = do
     return $ String s
 
 
+parseNumber :: Parser LispVal
+parseNumber = do
+    number <- many1 digit
+    let y = (Number . read) number
+    return  y
 {-
     W teorii to wygląda jak dobry kod,
     ale w praktyce rzeczy zaczynające się od # 
     jest matchowany jako atom. To nie tak miało być
 
     Okej, jednak lepiej dodać kod wykonujący to w atomie
--}
-parseNumber :: Parser LispVal
-parseNumber = do
-    number <- parseBinary <|> parseOctal <|> parseHexadecimal <|> many1 digit
-    let y = (Number . read) number
-    return  y
 
 parseOctal :: Parser String
 parseOctal = do
@@ -129,3 +128,5 @@ parseBinary=
     char 'b' >>
     many1 (oneOf "01") >>= \s -> 
     return $ show $ fst $ head $ readBin s
+
+-}
