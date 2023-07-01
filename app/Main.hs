@@ -2,6 +2,7 @@ module Main where
 import Control.Monad
 import Text.ParserCombinators.Parsec hiding (spaces)
 import System.Environment
+import Numeric
 main :: IO ()
 main = do
     (expr:_) <- getArgs
@@ -16,7 +17,7 @@ symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
     Left err -> "No match" ++ show err
-    Right val -> "Found value"
+    Right val -> "Found value" ++ show val
 
 
 data LispVal
@@ -26,13 +27,7 @@ data LispVal
     | Number Integer
     | String String
     | Bool Bool
-
---parseString :: Parser LispVal
---parseString = do
---    char '"'
---    x <- many $ noneOf "\""
---    char '"'
---    return $ String x
+    deriving (Show)
 
 parseAtom :: Parser LispVal
 parseAtom = do
@@ -40,12 +35,16 @@ parseAtom = do
     rest <- many ( letter <|> symbol <|> digit )
     let atom = first:rest
     return $ case atom of
-        "#t" -> Bool True
-        "#f" -> Bool False
+        "#t"        -> Bool True
+        "#f"        -> Bool False
+        '#':'x':n   -> Number $ fst $ head $ readHex n
+        '#':'d':n   -> Number $ fst $ head $ readDec n
+        '#':'o':n   -> Number $ fst $ head $ readOct n
+        '#':'b':n   -> Number $ fst $ head $ readBin n
         _    -> Atom atom
 
 parseExpr :: Parser LispVal
-parseExpr =  parseAtom <|> parseString <|> parseNumber
+parseExpr = parseAtom <|> parseString <|> parseNumber 
 
 
 --parseNumber :: Parser LispVal
@@ -64,8 +63,8 @@ parseExpr =  parseAtom <|> parseString <|> parseNumber
 --    return  y
 
 -- with >>= (monadic bind)
-parseNumber :: Parser LispVal
-parseNumber = many1 digit >>= \s -> return (Number $ read s)
+--parseNumber :: Parser LispVal
+--parseNumber = many1 digit >>= \s -> return (Number $ read s)
 -- return, bo return działa na wartości -> liftM działa na funkcje
 
 -- Exercise 2
@@ -94,3 +93,39 @@ parseString = do
     s <- many $  escapeChars <|> noneOf "\"" 
     char '"'
     return $ String s
+
+
+{-
+    W teorii to wygląda jak dobry kod,
+    ale w praktyce rzeczy zaczynające się od # 
+    jest matchowany jako atom. To nie tak miało być
+
+    Okej, jednak lepiej dodać kod wykonujący to w atomie
+-}
+parseNumber :: Parser LispVal
+parseNumber = do
+    number <- parseBinary <|> parseOctal <|> parseHexadecimal <|> many1 digit
+    let y = (Number . read) number
+    return  y
+
+parseOctal :: Parser String
+parseOctal = do
+    char '#'
+    char 'o'
+    num <- many1 (oneOf "0123467")
+    return $ show $ fst $ head $ readOct num
+
+parseHexadecimal:: Parser String
+parseHexadecimal= 
+    char '#' >>
+    char 'x' >>
+    many1 (oneOf "012346789abcdef") >>= \s -> 
+    return $ show $ fst $ head $ readHex s
+
+
+parseBinary:: Parser String
+parseBinary= 
+    char '#' >>
+    char 'b' >>
+    many1 (oneOf "01") >>= \s -> 
+    return $ show $ fst $ head $ readBin s
