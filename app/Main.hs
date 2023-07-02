@@ -6,7 +6,7 @@ import Numeric
 
 {-
 
-Todos, or things to implement to have it be a proper version of scheme
+    Todos, or things to implement to have it be a proper version of scheme
 * Full numeric tower of types (short, single, double, long, complex, real, rational)
 
 -}
@@ -20,7 +20,7 @@ spaces :: Parser ()
 spaces = skipMany1 space
 
 symbol :: Parser Char
-symbol = oneOf "!#$%&|*+-/:<=>?@^_~"
+symbol = oneOf "!$%&|*+-/:<=>?@^_~"
 
 readExpr :: String -> String
 readExpr input = case parse parseExpr "lisp" input of
@@ -43,22 +43,55 @@ parseAtom = do
     first <- letter <|> symbol
     rest <- many ( letter <|> symbol <|> digit )
     let atom = first:rest
-    return $ case atom of
-        "#t"        -> Bool True
-        "#f"        -> Bool False
+    return $ Atom atom
+    {-    "#t"        -> Bool True
+    --    "#f"        -> Bool False
         '#':'x':n   -> Number $ fst $ head $ readHex n
         '#':'d':n   -> Number $ fst $ head $ readDec n
         '#':'o':n   -> Number $ fst $ head $ readOct n
         '#':'b':n   -> Number $ fst $ head $ readBin n
         _    -> Atom atom
+    -}
+
+parseBool::Parser LispVal
+parseBool = do
+    char '#'
+    v <- oneOf "tf"
+    return $ case v of
+        't' -> Bool True
+        'f' -> Bool False
+        _   -> undefined
 
 parseExpr :: Parser LispVal
-parseExpr = parseChar <|> parseAtom <|> parseString <|> parseFloat <|>  parseNumber
+parseExpr = 
+    parseAtom
+    <|> parseString
+    <|> try parseFloat
+    <|> try parseNumber
+    <|> try parseBool
+    <|> try parseChar
+    <|> parseQuoted
+    <|> do
+        char '('
+-- ok kurwa trzeba jeden jebnąć elegancko >>=
+-- parseHexadecimal :: Parser LispVal
+-- parseHexadecimal = do 
+--     char '#'
+--     char 'x'
+--     x <- many1 $ oneOf "0123456789abcdef"
+--     return $ Number $ fst $ head $ readHex x
+        x <- try parseList <|> parseDottedList
+        char ')'
+        return x
 
 parseChar:: Parser LispVal
 parseChar = do
-    char '\''
-    Character <$> letter
+    try $ string "#\\"
+    value <- try (string "space" <|> string "newline" ) <|> do {x <- anyChar; notFollowedBy alphaNum; return [x]}
+    return $ Character $ case value of
+        "space"     -> ' '
+        "newline"   -> '\n'
+        _ -> head value
 
 escapeChars :: Parser Char
 escapeChars = do
@@ -79,10 +112,40 @@ parseString = do
     return $ String s
 
 parseNumber :: Parser LispVal
-parseNumber = do
+parseNumber = parseImplicitDecimal
+    <|> parseExplicitDecimal
+    <|> parseHexadecimal
+    <|> parseOctal
+    <|> parseBinary
+
+parseImplicitDecimal :: Parser LispVal
+parseImplicitDecimal = do
     number <- many1 digit
     let y = (Number . read) number
     return y
+
+parseExplicitDecimal:: Parser LispVal
+parseExplicitDecimal = do
+    try $ string "#d"
+    d <- many1 digit
+    return $ Number $ read d
+
+parseOctal:: Parser LispVal
+parseOctal = do
+    try $ string "#o"
+    x <- many1 $ oneOf "01234567"
+    return $  Number $ fst $ head $ readOct x
+
+parseBinary:: Parser LispVal
+parseBinary = do
+    try $ string "#b"
+    x <- many1 $ oneOf "10"
+    return $ Number $ fst $ head $ readBin x
+
+parseHexadecimal :: Parser LispVal
+parseHexadecimal =
+    try $ string "#x" >>
+    many1 ( oneOf "0123456789abcdef") >>= \s -> return $ Number $ fst $ head $ readHex s
 
 parseFloat :: Parser LispVal
 parseFloat = do
@@ -91,3 +154,18 @@ parseFloat = do
     frac <- many1 digit
     let y = (Float . read) $ whole <> ['.'] <> frac
     return  y
+
+parseList :: Parser LispVal
+parseList = liftM List $ sepBy parseExpr spaces
+
+parseDottedList ::Parser LispVal
+parseDottedList = do
+    head <- endBy parseExpr spaces
+    tail <- char '.' >> spaces >> parseExpr
+    return $ DottedList head tail
+
+parseQuoted :: Parser LispVal
+parseQuoted = do
+    char '\''
+    x <- parseExpr
+    return $ List [Atom "quote", x]
